@@ -4,11 +4,13 @@
 
 ### **Zero-Cloud AI Video Redaction — Built for Enterprises That Can't Afford a Leak.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-indigo?style=for-the-badge)](https://github.com/your-org/redactify/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/your-org/redactify/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-indigo?style=for-the-badge)](https://github.com/Redactify-AI/redactor-desktop/raw/main/src-tauri/target/release/bundle/msi/Redactify_1.0.0_x64_en-US.msi)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/Redactify-AI/redactor-desktop/raw/main/src-tauri/target/release/bundle/msi/Redactify_1.0.0_x64_en-US.msi)
 [![License](https://img.shields.io/badge/license-Proprietary-red?style=for-the-badge)](./LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/built_with-Tauri_v2-24C8D8?style=for-the-badge&logo=tauri)](https://tauri.app)
 [![AI Engine](https://img.shields.io/badge/AI-OpenCV_YuNet-green?style=for-the-badge&logo=opencv)](https://opencv.org)
+
+**[📥 Download the Latest Windows Installer (.msi)](https://github.com/Redactify-AI/redactor-desktop/raw/main/src-tauri/target/release/bundle/msi/Redactify_1.0.0_x64_en-US.msi)**
 
 </div>
 
@@ -44,10 +46,10 @@ Designed for **security operations teams, investigative journalists, legal & HR 
 ## ✨ Feature Showcase
 
 ### 🎬 Live Preview Engine
-Instantly generates a redacted preview frame from your source video in milliseconds. The engine intelligently scans the footage for the first frame containing a detectable face, applies all redaction settings, and renders it to your screen — without touching the full video pipeline. What you see is exactly what you get.
+Rapidly generates a redacted preview frame from your source video. The engine intelligently scans the footage for the first frame containing a detectable face, applies all redaction settings, and renders it to your screen — without touching the full video pipeline. What you see is exactly what you get.
 
 ### 🎛️ Debounced Real-Time Controls
-Adjust blur intensity and face padding with zero UI lag. A 300ms debounce timer fires a new preview render automatically after you release a slider, giving you a tight, responsive feedback loop for dialing in the exact redaction style required.
+Adjust blur intensity and face padding with zero UI lag. A debounce timer fires a new preview render automatically after you release a slider, giving you a tight, responsive feedback loop for dialing in the exact redaction style required.
 
 ### 🔷 Dynamic Geometry Masking
 Four production-ready redaction shapes, each generated via OpenCV matrix operations and composited with per-pixel alpha masking:
@@ -74,33 +76,33 @@ All intermediate redaction renders are written exclusively to the operating syst
 
 Redactify uses a three-tier local architecture. No network calls are made at any point during video processing.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        React UI Layer                           │
 │          (TypeScript · Tailwind CSS · Lucide Icons)             │
 │                                                                 │
 │   invoke("redact_video")            listen("redaction-progress")│
-└──────────────────────┬──────────────────────────────┬──────────┘
-                       │  Tauri IPC Bridge (async)     │
-                       ▼                               │
-┌─────────────────────────────────────────────────────┴──────────┐
+└──────────────────────┬──────────────────────────────┬───────────┘
+                       │  Tauri IPC Bridge (async)    │
+                       ▼                              │
+┌─────────────────────────────────────────────────────┴───────────┐
 │                     Rust / Tauri Core                           │
 │         (Command Handlers · Event Emitter · File APIs)          │
 │                                                                 │
 │  - Resolves bundled engine binary path at runtime               │
-│  - Spawns Python engine as a managed child process             │
-│  - Streams stdout → parses PROGRESS:/STATUS: → emits events    │
-└──────────────────────┬─────────────────────────────────────────┘
+│  - Spawns Python engine as a managed child process              │
+│  - Streams stdout → parses PROGRESS:/STATUS: → emits events     │
+└──────────────────────┬──────────────────────────────────────────┘
                        │  std::process::Command (piped stdout)
                        ▼
-┌────────────────────────────────────────────────────────────────┐
-│                  Python AI / Video Engine                       │
-│      (PyInstaller Bundle · OpenCV · YuNet · FFmpeg · NumPy)    │
+┌─────────────────────────────────────────────────────────────────┐
+│                 Python AI / Video Engine                        │
+│      (PyInstaller Bundle · OpenCV · YuNet · FFmpeg · NumPy)     │
 │                                                                 │
-│  Preview Mode:  Scan → Detect → Apply Mask → Write JPEG        │
-│  Full Mode:     Threaded Read → AI Inference → Optical Flow    │
+│  Preview Mode:  Scan → Detect → Apply Mask → Write JPEG         │
+│  Full Mode:     Threaded Read → AI Inference → Optical Flow     │
 │                 → Alpha Smoothing → Threaded Write → FFmpeg Mux │
-└────────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
@@ -116,14 +118,13 @@ Redactify uses a three-tier local architecture. No network calls are made at any
 
 ### Windows Installation
 
-1. Navigate to the [**Releases**](https://github.com/your-org/redactify/releases) page.
-2. Download the latest `Redactify_x.x.x_x64_en-US.msi` installer.
-3. Run the installer and follow the on-screen prompts.
-4. Launch **Redactify** from the Start Menu or Desktop shortcut.
+1. Click the [**📥 Download the Latest Windows Installer (.msi)**](https://github.com/Redactify-AI/redactor-desktop/raw/main/src-tauri/target/release/bundle/msi/Redactify_1.0.0_x64_en-US.msi) link.
+2. Run the downloaded `.msi` file and follow the on-screen prompts.
+3. Launch **Redactify** from the Start Menu or Desktop shortcut.
 
 ### Quick Workflow
 
-```
+```text
 1. Click the landing zone to open a video file (.mp4, .mov)
 2. Review the AI-generated live redaction preview
 3. Adjust Blur Shape, Blur Area Size, and Blur Intensity as needed
@@ -149,7 +150,7 @@ Ensure the following are installed and available on your `PATH`:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/redactify.git
+git clone https://github.com/Redactify-AI/redactor-desktop.git
 cd redactify
 ```
 
@@ -230,7 +231,7 @@ Redactify is proprietary software. All rights reserved.
 
 Unauthorized copying, distribution, modification, or use of this software, in whole or in part, is strictly prohibited without express written permission from the authors.
 
-For licensing inquiries, please contact: **legal@redactify.io**
+For licensing or enterprise inquiries, please open an issue on this repository.
 
 ---
 
