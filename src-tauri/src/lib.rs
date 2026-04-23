@@ -4,7 +4,10 @@ use std::thread;
 use tauri::{AppHandle, Emitter};
 
 #[tauri::command]
-fn redact_video(app: AppHandle, input: String, output: String) -> Result<(), String> {
+fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join(format!("redactify_temp_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+    let temp_path_str = temp_path.to_string_lossy().to_string();
     // We assume the executable is compiled to engine/dist/cli.exe
     // In production, you would bundle it via tauri.conf.json externalBin and use tauri_plugin_shell
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -23,7 +26,11 @@ fn redact_video(app: AppHandle, input: String, output: String) -> Result<(), Str
         .arg("--input")
         .arg(&input)
         .arg("--output")
-        .arg(&output)
+        .arg(&temp_path_str)
+        .arg("--padding")
+        .arg(padding_ratio.to_string())
+        .arg("--blur")
+        .arg(blur_strength.to_string())
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn engine: {}", e))?;
@@ -52,6 +59,15 @@ fn redact_video(app: AppHandle, input: String, output: String) -> Result<(), Str
         let _ = app.emit("redaction-status", "DONE");
     });
 
+    Ok(temp_path_str)
+}
+
+#[tauri::command]
+fn save_final_video(temp_path: String, destination_path: String) -> Result<(), String> {
+    if std::fs::rename(&temp_path, &destination_path).is_err() {
+        std::fs::copy(&temp_path, &destination_path).map_err(|e| format!("Failed to copy file: {}", e))?;
+        let _ = std::fs::remove_file(&temp_path);
+    }
     Ok(())
 }
 
@@ -60,7 +76,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![redact_video])
+        .invoke_handler(tauri::generate_handler![redact_video, save_final_video])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
