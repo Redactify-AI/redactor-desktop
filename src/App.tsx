@@ -22,11 +22,16 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [previewImgPath, setPreviewImgPath] = useState('');
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+
   const [paddingRatio, setPaddingRatio] = useState(0.20);
   const [blurStrength, setBlurStrength] = useState(15);
 
   const activeVideoPath = (isComplete && tempOutputPath) ? tempOutputPath : inputPath;
   const videoUrl = activeVideoPath ? convertFileSrc(activeVideoPath) : '';
+  const previewUrl = previewImgPath ? `${convertFileSrc(previewImgPath)}?t=${Date.now()}` : '';
 
   useEffect(() => {
     const unlistenProgress = listen<number>('redaction-progress', (event) => {
@@ -47,6 +52,33 @@ function App() {
       unlistenStatus.then(f => f());
     };
   }, []);
+
+  // Debounced effect for Live Preview
+  useEffect(() => {
+    if (!isPreviewMode || !inputPath || isProcessing || isComplete) return;
+
+    const generatePreview = async () => {
+      setIsGeneratingPreview(true);
+      try {
+        const pPath = await invoke('generate_preview', {
+          input: inputPath,
+          paddingRatio,
+          blurStrength
+        });
+        setPreviewImgPath(pPath as string);
+      } catch (e) {
+        console.error("Preview generation failed", e);
+      } finally {
+        setIsGeneratingPreview(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      generatePreview();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [inputPath, paddingRatio, blurStrength, isPreviewMode, isProcessing, isComplete]);
 
   const handleRedact = async () => {
     if (!inputPath) return;
@@ -78,13 +110,15 @@ function App() {
       setStatus('');
       setIsComplete(false);
       setTempOutputPath('');
+      setPreviewImgPath('');
+      setIsPreviewMode(false);
     }
   };
 
   const handleSaveFinal = async () => {
     const selected = await save({
       filters: [{ name: 'Videos', extensions: ['mp4'] }],
-      defaultPath: inputPath ? inputPath.replace(/\.[^/.]+$/, "") + "_secure.mp4" : "output.mp4",
+      defaultPath: inputPath ? inputPath.replace(/\.[^/.]+$/, "") + "_redacted.mp4" : "output.mp4",
     });
     
     if (selected && typeof selected === 'string') {
@@ -111,6 +145,8 @@ function App() {
     setProgress(0);
     setStatus('');
     setIsComplete(false);
+    setPreviewImgPath('');
+    setIsPreviewMode(false);
   };
 
   // -------------------------------------------------------------
@@ -189,14 +225,36 @@ function App() {
               <h2 className="text-sm font-medium text-zinc-400">Preview Player</h2>
             </div>
             
-            <div className="flex-1 min-h-0 bg-black rounded-xl border border-zinc-800 shadow-inner shadow-black/50 overflow-hidden flex items-center justify-center">
-              <video 
-                src={videoUrl} 
-                controls 
-                className="w-full h-full max-h-full object-contain"
-                disablePictureInPicture
-                controlsList="nodownload noplaybackrate"
-              />
+            <div className="flex-1 min-h-0 bg-black rounded-xl border border-zinc-800 shadow-inner shadow-black/50 overflow-hidden flex items-center justify-center relative">
+              {isPreviewMode && !isComplete ? (
+                <>
+                  {previewImgPath ? (
+                    <img 
+                      src={previewUrl} 
+                      alt="Redaction Preview" 
+                      className="w-full h-full max-h-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-zinc-500 text-sm flex flex-col items-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      Generating preview...
+                    </div>
+                  )}
+                  {isGeneratingPreview && previewImgPath && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <video 
+                  src={videoUrl} 
+                  controls 
+                  className="w-full h-full max-h-full object-contain"
+                  disablePictureInPicture
+                  controlsList="nodownload noplaybackrate"
+                />
+              )}
             </div>
             
             <div className="flex-none mt-4 flex items-center justify-between">
@@ -224,12 +282,23 @@ function App() {
           
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
             {/* Header */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Settings2 className="w-5 h-5 text-zinc-100" />
-                <h2 className="text-lg font-medium text-zinc-100">Redaction Settings</h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Settings2 className="w-5 h-5 text-zinc-100" />
+                  <h2 className="text-lg font-medium text-zinc-100">Redaction Settings</h2>
+                </div>
+                <p className="text-xs text-zinc-400">Configure AI face detection and blur intensity.</p>
               </div>
-              <p className="text-xs text-zinc-400">Configure AI face detection and blur intensity.</p>
+              
+              {/* Live Preview Toggle */}
+              <button
+                onClick={() => setIsPreviewMode(!isPreviewMode)}
+                disabled={isProcessing || isComplete}
+                className={`flex-none px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#141416] ${isPreviewMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 hover:border-emerald-500/50 focus:ring-emerald-500/50' : 'bg-[#09090b] text-zinc-400 border border-zinc-800 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-50 focus:ring-zinc-600'}`}
+              >
+                {isPreviewMode ? 'Live Preview ON' : 'Preview OFF'}
+              </button>
             </div>
 
             {/* Sliders */}
@@ -272,7 +341,7 @@ function App() {
             {/* Output Path Indicator */}
             <div className="pt-2 border-t border-zinc-800/80">
               <div className="p-3 bg-[#09090b] border border-zinc-800/80 rounded-lg text-center text-xs text-zinc-400">
-                Processed locally. Save securely when complete.
+                Processed locally. Save redacted video when complete.
               </div>
             </div>
           </div>
@@ -299,7 +368,7 @@ function App() {
               >
                 <div className="absolute inset-0 w-full h-full bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 <Save className="w-5 h-5 drop-shadow-md" />
-                <span className="drop-shadow-md tracking-wide">Save Secure Video As...</span>
+                <span className="drop-shadow-md tracking-wide">Save Redacted Video As...</span>
               </button>
             )}
 
