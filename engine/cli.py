@@ -30,7 +30,6 @@ def mux_audio(original_path, silent_path, final_path):
     except Exception as e:
         print(f"ERROR: FFmpeg encoding failed. Make sure ffmpeg is installed. {e}", flush=True)
 
-# --- NEW: GEOMETRY ENGINE ---
 def get_mask(shape, w, h):
     mask = np.zeros((h, w), dtype=np.uint8)
     cx, cy = w // 2, h // 2
@@ -43,7 +42,6 @@ def get_mask(shape, w, h):
     elif shape == "rect":
         cv2.rectangle(mask, (0, 0), (w, h), 255, -1)
     elif shape == "rounded":
-        # Draw overlapping rectangles and circles to create a soft-edged box
         radius = int(min(w, h) * 0.15)
         cv2.rectangle(mask, (radius, 0), (w - radius, h), 255, -1)
         cv2.rectangle(mask, (0, radius), (w, h - radius), 255, -1)
@@ -93,9 +91,16 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength, 
                     X, Y = int(x * scale_factor), int(y * scale_factor)
                     W, H = int(w * scale_factor), int(h * scale_factor)
                     
-                    pad_x, pad_y = int(W * padding_ratio), int(H * padding_ratio)
-                    x1, y1 = max(0, X - pad_x), max(0, Y - pad_y - int(H * 0.15)) 
-                    x2, y2 = min(orig_w, X + W + pad_x), min(orig_h, Y + H + pad_y)
+                    # --- BASELINE HEAD EXPANSION ---
+                    # We add a built-in safety net of 15% width, 25% height (top), and 10% height (bottom)
+                    pad_x = int(W * (0.15 + padding_ratio))
+                    pad_y_top = int(H * (0.25 + padding_ratio)) 
+                    pad_y_bottom = int(H * (0.10 + padding_ratio))
+                    
+                    x1 = max(0, X - pad_x)
+                    y1 = max(0, Y - pad_y_top)
+                    x2 = min(orig_w, X + W + pad_x)
+                    y2 = min(orig_h, Y + H + pad_y_bottom)
 
                     if x2 > x1 and y2 > y1:
                         roi = frame[y1:y2, x1:x2]
@@ -104,7 +109,6 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength, 
                         blurred_small = cv2.blur(small_roi, (blur_strength, blur_strength))
                         frosted = cv2.resize(blurred_small, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
                         
-                        # Apply the dynamic mask
                         mask = get_mask(shape, box_w, box_h)
                         frame[y1:y2, x1:x2] = np.where(mask[:,:,np.newaxis] == 255, frosted, roi)
             
@@ -219,9 +223,15 @@ def run_production_pipeline(input_path, output_path, padding_ratio, blur_strengt
             X, Y = int(x * scale_factor), int(y * scale_factor)
             W, H = int(w * scale_factor), int(h * scale_factor)
             
-            pad_x, pad_y = int(W * padding_ratio), int(H * padding_ratio)
-            x1, y1 = max(0, X - pad_x), max(0, Y - pad_y - int(H * 0.15)) 
-            x2, y2 = min(reader.width, X + W + pad_x), min(reader.height, Y + H + pad_y)
+            # --- BASELINE HEAD EXPANSION ---
+            pad_x = int(W * (0.15 + padding_ratio))
+            pad_y_top = int(H * (0.25 + padding_ratio)) 
+            pad_y_bottom = int(H * (0.10 + padding_ratio))
+            
+            x1 = max(0, X - pad_x)
+            y1 = max(0, Y - pad_y_top)
+            x2 = min(reader.width, X + W + pad_x)
+            y2 = min(reader.height, Y + H + pad_y_bottom)
 
             if x2 > x1 and y2 > y1:
                 roi = frame[y1:y2, x1:x2]
@@ -230,7 +240,6 @@ def run_production_pipeline(input_path, output_path, padding_ratio, blur_strengt
                 blurred_small = cv2.blur(small_roi, (blur_strength, blur_strength))
                 frosted = cv2.resize(blurred_small, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
                 
-                # Apply the dynamic mask
                 mask = get_mask(shape, box_w, box_h)
                 frame[y1:y2, x1:x2] = np.where(mask[:,:,np.newaxis] == 255, frosted, roi)
 
@@ -257,8 +266,6 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, default="full", choices=["full", "preview"], help="Run full redaction or generate a single preview frame")
     parser.add_argument("--padding", type=float, default=0.20, help="Ratio of padding around the face (e.g. 0.1 to 1.0)")
     parser.add_argument("--blur", type=int, default=15, help="Strength of the blur effect (e.g. 5 to 50)")
-    
-    # --- NEW EXPOSED PARAMETER ---
     parser.add_argument("--shape", type=str, default="oval", choices=["oval", "circle", "rect", "rounded"], help="Shape of the redaction mask")
     
     args = parser.parse_args()

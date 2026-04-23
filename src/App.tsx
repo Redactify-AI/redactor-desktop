@@ -74,12 +74,15 @@ function App() {
     };
   }, []);
 
+  const [previewError, setPreviewError] = useState('');
+
   // Debounced effect for Live Preview
   useEffect(() => {
     if (!inputPath || isProcessing || isComplete) return;
 
     const generatePreview = async () => {
       setIsGeneratingPreview(true);
+      setPreviewError('');
       try {
         const pPath = await invoke('generate_preview', {
           input: inputPath,
@@ -90,6 +93,7 @@ function App() {
         setPreviewImgPath(pPath as string);
       } catch (e) {
         console.error("Preview generation failed", e);
+        setPreviewError(String(e));
       } finally {
         setIsGeneratingPreview(false);
       }
@@ -263,9 +267,18 @@ function App() {
                       className="w-full h-full max-h-full object-contain"
                     />
                   ) : (
-                    <div className="text-zinc-500 text-sm flex flex-col items-center gap-2">
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      Generating preview...
+                    <div className="text-zinc-500 text-sm flex flex-col items-center gap-2 px-4 text-center">
+                      {previewError ? (
+                        <>
+                          <div className="text-red-400 font-medium">Failed to generate preview</div>
+                          <div className="text-xs text-red-400/70">{previewError}</div>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          Generating preview...
+                        </>
+                      )}
                     </div>
                   )}
                   {isGeneratingPreview && previewImgPath && (

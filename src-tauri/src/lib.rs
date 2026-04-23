@@ -1,7 +1,31 @@
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 use std::thread;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+
+#[tauri::command]
+fn resolve_cli_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let mut possible_paths = vec![
+        cwd.join("engine").join("dist").join("cli.exe"),
+        cwd.join("..").join("engine").join("dist").join("cli.exe"),
+    ];
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        possible_paths.push(resource_dir.join("_up_").join("engine").join("dist").join("cli.exe"));
+        possible_paths.push(resource_dir.join("engine").join("dist").join("cli.exe"));
+        possible_paths.push(resource_dir.join("cli.exe"));
+    }
+    
+    if let Ok(exe_dir) = std::env::current_exe().map(|p| p.parent().unwrap().to_path_buf()) {
+        possible_paths.push(exe_dir.join("_up_").join("engine").join("dist").join("cli.exe"));
+        possible_paths.push(exe_dir.join("engine").join("dist").join("cli.exe"));
+        possible_paths.push(exe_dir.join("cli.exe"));
+    }
+
+    possible_paths.into_iter().find(|p| p.exists())
+        .ok_or_else(|| "Could not find cli.exe. Please ensure the application was installed correctly.".to_string())
+}
 
 #[tauri::command]
 fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32, shape: String) -> Result<String, String> {
@@ -10,17 +34,7 @@ fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength
     let temp_path_str = temp_path.to_string_lossy().to_string();
     // We assume the executable is compiled to engine/dist/cli.exe
     // In production, you would bundle it via tauri.conf.json externalBin and use tauri_plugin_shell
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let exe_path_1 = cwd.join("engine").join("dist").join("cli.exe");
-    let exe_path_2 = cwd.join("..").join("engine").join("dist").join("cli.exe");
-    
-    let target_exe = if exe_path_1.exists() {
-        exe_path_1
-    } else if exe_path_2.exists() {
-        exe_path_2
-    } else {
-        return Err(format!("Could not find cli.exe. Looked in {:?} and {:?}", exe_path_1, exe_path_2));
-    };
+    let target_exe = resolve_cli_path(&app)?;
     
     let mut child = Command::new(target_exe)
         .arg("--input")
@@ -79,17 +93,7 @@ fn generate_preview(app: AppHandle, input: String, padding_ratio: f32, blur_stre
     let temp_path = temp_dir.join(format!("redactify_temp_preview_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let exe_path_1 = cwd.join("engine").join("dist").join("cli.exe");
-    let exe_path_2 = cwd.join("..").join("engine").join("dist").join("cli.exe");
-    
-    let target_exe = if exe_path_1.exists() {
-        exe_path_1
-    } else if exe_path_2.exists() {
-        exe_path_2
-    } else {
-        return Err(format!("Could not find cli.exe."));
-    };
+    let target_exe = resolve_cli_path(&app)?;
     
     let mut child = Command::new(target_exe)
         .arg("--input")
