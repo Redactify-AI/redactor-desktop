@@ -32,3 +32,8 @@ engine/__pycache__/
 engine/*.mp4
 engine/*.onnx
 !engine/*.py
+
+engine/test_video.mp4
+engine/build/
+engine/dist/
+engine/*.spec

@@ -4,7 +4,7 @@ import os
 import time
 # Import your existing async processing logic from your main file
 # Assuming your main file is named redactor.py
-from redactor import ThreadedVideoReader, ThreadedVideoWriter, setup_yunet, mux_audio
+from redactor import ThreadedVideoReader, ThreadedVideoWriter, setup_yunet
 import cv2
 import numpy as np
 
@@ -135,8 +135,7 @@ def run_production_pipeline(input_path, output_path):
     writer.stop()
     while not writer.Q.empty(): time.sleep(0.1)
     
-    final_secure_path = output_path.replace(".mp4", "_secure.mp4")
-    mux_audio(input_path, output_path, final_secure_path)
+    print("PROGRESS:100", flush=True)
     print("STATUS:COMPLETE", flush=True)
 
 if __name__ == "__main__":
