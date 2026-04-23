@@ -30,8 +30,33 @@ def mux_audio(original_path, silent_path, final_path):
     except Exception as e:
         print(f"ERROR: FFmpeg encoding failed. Make sure ffmpeg is installed. {e}", flush=True)
 
-# --- NEW: THE LIVE PREVIEW EXTRACTOR ---
-def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
+# --- NEW: GEOMETRY ENGINE ---
+def get_mask(shape, w, h):
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cx, cy = w // 2, h // 2
+    
+    if shape == "oval":
+        cv2.ellipse(mask, (cx, cy), (int(w * 0.45), int(h * 0.45)), 0, 0, 360, 255, -1)
+    elif shape == "circle":
+        radius = int(min(w, h) * 0.45)
+        cv2.circle(mask, (cx, cy), radius, 255, -1)
+    elif shape == "rect":
+        cv2.rectangle(mask, (0, 0), (w, h), 255, -1)
+    elif shape == "rounded":
+        # Draw overlapping rectangles and circles to create a soft-edged box
+        radius = int(min(w, h) * 0.15)
+        cv2.rectangle(mask, (radius, 0), (w - radius, h), 255, -1)
+        cv2.rectangle(mask, (0, radius), (w, h - radius), 255, -1)
+        cv2.circle(mask, (radius, radius), radius, 255, -1)
+        cv2.circle(mask, (w - radius, radius), radius, 255, -1)
+        cv2.circle(mask, (radius, h - radius), radius, 255, -1)
+        cv2.circle(mask, (w - radius, h - radius), radius, 255, -1)
+    else:
+        cv2.ellipse(mask, (cx, cy), (int(w * 0.45), int(h * 0.45)), 0, 0, 360, 255, -1)
+        
+    return mask
+
+def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength, shape):
     model_path = setup_yunet()
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
@@ -51,8 +76,7 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
     )
     
     frame_count = 0
-    max_search = 300 # Search up to 10 seconds (at 30fps) for a face
-    
+    max_search = 300 
     preview_img_path = output_path.replace(".mp4", "_preview.jpg")
 
     while cap.isOpened() and frame_count < max_search:
@@ -63,7 +87,6 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
         _, faces = detector.detect(small_frame)
         
         if faces is not None:
-            # Face found! Apply the user's current slider math to this single frame
             for face in faces:
                 x, y, w, h = map(int, face[:4])
                 if w > (ai_width * 0.05):
@@ -81,11 +104,10 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
                         blurred_small = cv2.blur(small_roi, (blur_strength, blur_strength))
                         frosted = cv2.resize(blurred_small, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
                         
-                        mask = np.zeros((box_h, box_w), dtype=np.uint8)
-                        cv2.ellipse(mask, (box_w // 2, box_h // 2), (int(box_w * 0.45), int(box_h * 0.45)), 0, 0, 360, 255, -1)
+                        # Apply the dynamic mask
+                        mask = get_mask(shape, box_w, box_h)
                         frame[y1:y2, x1:x2] = np.where(mask[:,:,np.newaxis] == 255, frosted, roi)
             
-            # Save the image and broadcast the path
             cv2.imwrite(preview_img_path, frame)
             print(f"PREVIEW_READY:{preview_img_path}", flush=True)
             cap.release()
@@ -93,7 +115,6 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
         
         frame_count += 1
         
-    # Fallback: If no face is found in the first 300 frames, just return the 1st frame
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     ret, frame = cap.read()
     if ret:
@@ -101,8 +122,7 @@ def run_preview_pipeline(input_path, output_path, padding_ratio, blur_strength):
         print(f"PREVIEW_READY:{preview_img_path}", flush=True)
     cap.release()
 
-
-def run_production_pipeline(input_path, output_path, padding_ratio, blur_strength):
+def run_production_pipeline(input_path, output_path, padding_ratio, blur_strength, shape):
     print("STATUS:Initializing Engine...", flush=True)
     model_path = setup_yunet()
     
@@ -210,8 +230,8 @@ def run_production_pipeline(input_path, output_path, padding_ratio, blur_strengt
                 blurred_small = cv2.blur(small_roi, (blur_strength, blur_strength))
                 frosted = cv2.resize(blurred_small, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
                 
-                mask = np.zeros((box_h, box_w), dtype=np.uint8)
-                cv2.ellipse(mask, (box_w // 2, box_h // 2), (int(box_w * 0.45), int(box_h * 0.45)), 0, 0, 360, 255, -1)
+                # Apply the dynamic mask
+                mask = get_mask(shape, box_w, box_h)
                 frame[y1:y2, x1:x2] = np.where(mask[:,:,np.newaxis] == 255, frosted, roi)
 
         writer.write(frame)
@@ -234,16 +254,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Redactify Engine CLI")
     parser.add_argument("--input", required=True, help="Path to input video")
     parser.add_argument("--output", required=True, help="Path to save final secure video")
-    
-    # --- THE NEW MODE ARGUMENT ---
     parser.add_argument("--mode", type=str, default="full", choices=["full", "preview"], help="Run full redaction or generate a single preview frame")
-    
     parser.add_argument("--padding", type=float, default=0.20, help="Ratio of padding around the face (e.g. 0.1 to 1.0)")
     parser.add_argument("--blur", type=int, default=15, help="Strength of the blur effect (e.g. 5 to 50)")
+    
+    # --- NEW EXPOSED PARAMETER ---
+    parser.add_argument("--shape", type=str, default="oval", choices=["oval", "circle", "rect", "rounded"], help="Shape of the redaction mask")
     
     args = parser.parse_args()
     
     if args.mode == "preview":
-        run_preview_pipeline(args.input, args.output, padding_ratio=args.padding, blur_strength=args.blur)
+        run_preview_pipeline(args.input, args.output, padding_ratio=args.padding, blur_strength=args.blur, shape=args.shape)
     else:
-        run_production_pipeline(args.input, args.output, padding_ratio=args.padding, blur_strength=args.blur)
+        run_production_pipeline(args.input, args.output, padding_ratio=args.padding, blur_strength=args.blur, shape=args.shape)

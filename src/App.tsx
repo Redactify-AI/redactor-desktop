@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -12,7 +12,11 @@ import {
   Save,
   ShieldCheck,
   Eye,
-  EyeOff
+  EyeOff,
+  Circle,
+  Square,
+  Box,
+  CircleDot
 } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';
 
@@ -21,8 +25,10 @@ function App() {
   const [tempOutputPath, setTempOutputPath] = useState('');
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
+  const [processState, setProcessState] = useState<'idle' | 'processing' | 'finished'>('idle');
+  
+  const isProcessing = processState === 'processing';
+  const isComplete = processState === 'finished';
   
   const [isComparing, setIsComparing] = useState(false);
   const [previewImgPath, setPreviewImgPath] = useState('');
@@ -30,10 +36,21 @@ function App() {
 
   const [paddingRatio, setPaddingRatio] = useState(0.20);
   const [blurStrength, setBlurStrength] = useState(15);
+  const [blurShape, setBlurShape] = useState('oval');
+
+  const [lastProcessedSettings, setLastProcessedSettings] = useState<{ paddingRatio: number, blurStrength: number, blurShape: string } | null>(null);
+  const pendingSettingsRef = useRef<{ paddingRatio: number, blurStrength: number, blurShape: string } | null>(null);
 
   const activeVideoPath = (isComplete && tempOutputPath) ? tempOutputPath : inputPath;
   const videoUrl = activeVideoPath ? convertFileSrc(activeVideoPath) : '';
   const previewUrl = previewImgPath ? `${convertFileSrc(previewImgPath)}?t=${Date.now()}` : '';
+
+  const isDirty = !lastProcessedSettings || 
+    lastProcessedSettings.paddingRatio !== paddingRatio || 
+    lastProcessedSettings.blurStrength !== blurStrength || 
+    lastProcessedSettings.blurShape !== blurShape;
+
+  const isFinishedAndClean = isComplete && !isDirty;
 
   useEffect(() => {
     const unlistenProgress = listen<number>('redaction-progress', (event) => {
@@ -44,8 +61,10 @@ function App() {
       setStatus(event.payload);
       if (event.payload === 'DONE' || event.payload === 'COMPLETE') {
         setProgress(100);
-        setIsProcessing(false);
-        setIsComplete(true);
+        setProcessState('finished');
+        if (pendingSettingsRef.current) {
+          setLastProcessedSettings(pendingSettingsRef.current);
+        }
       }
     });
 
@@ -65,7 +84,8 @@ function App() {
         const pPath = await invoke('generate_preview', {
           input: inputPath,
           paddingRatio,
-          blurStrength
+          blurStrength,
+          shape: blurShape
         });
         setPreviewImgPath(pPath as string);
       } catch (e) {
@@ -80,23 +100,25 @@ function App() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [inputPath, paddingRatio, blurStrength, isProcessing, isComplete]);
+  }, [inputPath, paddingRatio, blurStrength, blurShape, isProcessing, isComplete]);
 
   const handleRedact = async () => {
     if (!inputPath) return;
-    setIsProcessing(true);
+    pendingSettingsRef.current = { paddingRatio, blurStrength, blurShape };
+    setProcessState('processing');
     setProgress(0);
     setStatus('Initializing Tauri Sidecar...');
     try {
       const tempPath = await invoke('redact_video', { 
         input: inputPath, 
         paddingRatio,
-        blurStrength
+        blurStrength,
+        shape: blurShape
       });
       setTempOutputPath(tempPath as string);
     } catch (e) {
       setStatus('Error: ' + String(e));
-      setIsProcessing(false);
+      setProcessState('idle');
     }
   };
 
@@ -110,10 +132,12 @@ function App() {
       // Reset progress/status for new video
       setProgress(0);
       setStatus('');
-      setIsComplete(false);
+      setProcessState('idle');
       setTempOutputPath('');
       setPreviewImgPath('');
       setIsComparing(false);
+      setLastProcessedSettings(null);
+      pendingSettingsRef.current = null;
     }
   };
 
@@ -129,7 +153,7 @@ function App() {
         setStatus('Saved successfully!');
         
         setTimeout(() => {
-          setIsComplete(false);
+          setProcessState('idle');
           setProgress(0);
           setStatus('');
           setTempOutputPath('');
@@ -146,9 +170,11 @@ function App() {
     setTempOutputPath('');
     setProgress(0);
     setStatus('');
-    setIsComplete(false);
+    setProcessState('idle');
     setPreviewImgPath('');
     setIsComparing(false);
+    setLastProcessedSettings(null);
+    pendingSettingsRef.current = null;
   };
 
   // -------------------------------------------------------------
@@ -228,7 +254,7 @@ function App() {
             </div>
             
             <div className="flex-1 min-h-0 bg-black rounded-xl border border-zinc-800 shadow-inner shadow-black/50 overflow-hidden flex items-center justify-center relative">
-              {!isComparing && !isComplete ? (
+              {!isComparing && !isFinishedAndClean ? (
                 <>
                   {previewImgPath ? (
                     <img 
@@ -261,7 +287,7 @@ function App() {
             
             <div className="flex-none mt-4 flex items-center justify-between">
               <div className="text-xs text-zinc-500 truncate" title={activeVideoPath}>
-                {isComplete ? (
+                {isFinishedAndClean ? (
                   <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
                     <ShieldCheck className="w-4 h-4" />
                     Previewing Redacted Video
@@ -304,6 +330,33 @@ function App() {
               </button>
             </div>
 
+            {/* Blur Shape Selection */}
+            <div className="space-y-4">
+              <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider">Blur Shape</label>
+              <div className="flex bg-[#09090b] p-1 rounded-lg border border-zinc-800/80 shadow-inner">
+                {[
+                  { id: 'oval', label: 'Oval', icon: Circle },
+                  { id: 'circle', label: 'Circle', icon: CircleDot },
+                  { id: 'rect', label: 'Rect', icon: Square },
+                  { id: 'rounded', label: 'Rounded', icon: Box },
+                ].map((shapeOption) => {
+                  const Icon = shapeOption.icon;
+                  const isActive = blurShape === shapeOption.id;
+                  return (
+                    <button
+                      key={shapeOption.id}
+                      onClick={() => setBlurShape(shapeOption.id)}
+                      disabled={isProcessing}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-md transition-all ${isActive ? 'bg-zinc-800 text-zinc-100 shadow-sm ring-1 ring-zinc-700/50' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50'} focus:outline-none focus:ring-2 focus:ring-zinc-600 disabled:opacity-50`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {shapeOption.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Sliders */}
             <div className="space-y-6">
               <div className="space-y-4">
@@ -319,7 +372,7 @@ function App() {
                   value={paddingRatio}
                   onChange={(e) => setPaddingRatio(parseFloat(e.target.value))}
                   disabled={isProcessing}
-                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-[#141416]"
+                  className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-2 focus:ring-offset-[#141416] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
                 />
               </div>
 
@@ -336,35 +389,46 @@ function App() {
                   value={blurStrength}
                   onChange={(e) => setBlurStrength(parseInt(e.target.value))}
                   disabled={isProcessing}
-                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-[#141416]"
+                  className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-2 focus:ring-offset-[#141416] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
                 />
-              </div>
-            </div>
-
-            {/* Output Path Indicator */}
-            <div className="pt-2 border-t border-zinc-800/80">
-              <div className="p-3 bg-[#09090b] border border-zinc-800/80 rounded-lg text-center text-xs text-zinc-400">
-                Processed locally. Save redacted video when complete.
               </div>
             </div>
           </div>
 
           {/* Fixed Bottom Action Area */}
           <div className="flex-none p-6 bg-[#18181b] border-t border-zinc-800 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
-            {!isComplete ? (
+            {(processState === 'idle' || (processState === 'finished' && isDirty)) && (
               <button 
                 onClick={handleRedact}
-                disabled={isProcessing}
-                className="w-full py-3.5 bg-zinc-100 hover:bg-white text-zinc-900 disabled:bg-zinc-800 disabled:text-zinc-500 font-semibold rounded-lg shadow-sm transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-[#18181b]"
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 focus:ring-offset-[#18181b]"
               >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Processing Video...
-                  </>
-                ) : 'Redact Video'}
+                {processState === 'finished' ? 'Update Redaction' : 'Start Redaction'}
               </button>
-            ) : (
+            )}
+
+            {processState === 'processing' && (
+              <div className="w-full space-y-3 py-1">
+                <div className="flex justify-between items-center text-xs font-medium">
+                  <span className="text-zinc-300 truncate max-w-[80%] pr-4 flex items-center gap-2" title={status}>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                    {status}
+                  </span>
+                  <span className="text-zinc-100 tabular-nums font-mono">{progress}%</span>
+                </div>
+                
+                <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden shadow-inner border border-zinc-800/50">
+                  <div 
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-300 ease-out relative"
+                    style={{ width: `${progress}%` }}
+                  >
+                    {/* Shimmer effect for active progress */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {processState === 'finished' && !isDirty && (
               <button 
                 onClick={handleSaveFinal}
                 className="w-full relative overflow-hidden group py-3.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold rounded-lg shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all duration-300 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-[#18181b] border border-emerald-400/30 hover:-translate-y-0.5"
@@ -373,30 +437,6 @@ function App() {
                 <Save className="w-5 h-5 drop-shadow-md" />
                 <span className="drop-shadow-md tracking-wide">Save Redacted Video As...</span>
               </button>
-            )}
-
-            {/* Realtime Progress & Status */}
-            {status && (
-              <div className="mt-5 space-y-2">
-                <div className="flex justify-between items-center text-xs font-medium">
-                  <span className="text-zinc-400 truncate max-w-[80%] pr-4" title={status}>{status}</span>
-                  {!isComplete && <span className="text-zinc-100 tabular-nums font-mono">{progress}%</span>}
-                </div>
-                
-                {!isComplete && (
-                  <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden shadow-inner border border-zinc-800/50">
-                    <div 
-                      className="h-full bg-zinc-100 rounded-full transition-all duration-300 ease-out relative"
-                      style={{ width: `${progress}%` }}
-                    >
-                      {/* Shimmer effect for active progress */}
-                      {isProcessing && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
             )}
           </div>
         </Panel>

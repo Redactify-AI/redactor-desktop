@@ -4,7 +4,7 @@ use std::thread;
 use tauri::{AppHandle, Emitter};
 
 #[tauri::command]
-fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32) -> Result<String, String> {
+fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32, shape: String) -> Result<String, String> {
     let temp_dir = std::env::temp_dir();
     let temp_path = temp_dir.join(format!("redactify_temp_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
     let temp_path_str = temp_path.to_string_lossy().to_string();
@@ -31,6 +31,8 @@ fn redact_video(app: AppHandle, input: String, padding_ratio: f32, blur_strength
         .arg(padding_ratio.to_string())
         .arg("--blur")
         .arg(blur_strength.to_string())
+        .arg("--shape")
+        .arg(&shape)
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn engine: {}", e))?;
@@ -72,7 +74,7 @@ fn save_final_video(temp_path: String, destination_path: String) -> Result<(), S
 }
 
 #[tauri::command]
-fn generate_preview(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32) -> Result<String, String> {
+fn generate_preview(app: AppHandle, input: String, padding_ratio: f32, blur_strength: i32, shape: String) -> Result<String, String> {
     let temp_dir = std::env::temp_dir();
     let temp_path = temp_dir.join(format!("redactify_temp_preview_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
     let temp_path_str = temp_path.to_string_lossy().to_string();
@@ -100,6 +102,8 @@ fn generate_preview(app: AppHandle, input: String, padding_ratio: f32, blur_stre
         .arg(padding_ratio.to_string())
         .arg("--blur")
         .arg(blur_strength.to_string())
+        .arg("--shape")
+        .arg(&shape)
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn engine: {}", e))?;
