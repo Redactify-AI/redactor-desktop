@@ -10,7 +10,9 @@ import {
   ArrowLeft,
   Loader2,
   Save,
-  ShieldCheck
+  ShieldCheck,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';
 
@@ -22,7 +24,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
   const [previewImgPath, setPreviewImgPath] = useState('');
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
 
@@ -55,7 +57,7 @@ function App() {
 
   // Debounced effect for Live Preview
   useEffect(() => {
-    if (!isPreviewMode || !inputPath || isProcessing || isComplete) return;
+    if (!inputPath || isProcessing || isComplete) return;
 
     const generatePreview = async () => {
       setIsGeneratingPreview(true);
@@ -78,7 +80,7 @@ function App() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [inputPath, paddingRatio, blurStrength, isPreviewMode, isProcessing, isComplete]);
+  }, [inputPath, paddingRatio, blurStrength, isProcessing, isComplete]);
 
   const handleRedact = async () => {
     if (!inputPath) return;
@@ -111,7 +113,7 @@ function App() {
       setIsComplete(false);
       setTempOutputPath('');
       setPreviewImgPath('');
-      setIsPreviewMode(false);
+      setIsComparing(false);
     }
   };
 
@@ -146,7 +148,7 @@ function App() {
     setStatus('');
     setIsComplete(false);
     setPreviewImgPath('');
-    setIsPreviewMode(false);
+    setIsComparing(false);
   };
 
   // -------------------------------------------------------------
@@ -226,7 +228,7 @@ function App() {
             </div>
             
             <div className="flex-1 min-h-0 bg-black rounded-xl border border-zinc-800 shadow-inner shadow-black/50 overflow-hidden flex items-center justify-center relative">
-              {isPreviewMode && !isComplete ? (
+              {!isComparing && !isComplete ? (
                 <>
                   {previewImgPath ? (
                     <img 
@@ -291,13 +293,14 @@ function App() {
                 <p className="text-xs text-zinc-400">Configure AI face detection and blur intensity.</p>
               </div>
               
-              {/* Live Preview Toggle */}
+              {/* Show Original Toggle */}
               <button
-                onClick={() => setIsPreviewMode(!isPreviewMode)}
-                disabled={isProcessing || isComplete}
-                className={`flex-none px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#141416] ${isPreviewMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 hover:border-emerald-500/50 focus:ring-emerald-500/50' : 'bg-[#09090b] text-zinc-400 border border-zinc-800 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-50 focus:ring-zinc-600'}`}
+                onClick={() => setIsComparing(!isComparing)}
+                disabled={isProcessing || isComplete || !previewImgPath}
+                className={`flex items-center gap-1.5 flex-none px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 shadow-sm select-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#141416] ${isComparing ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40' : 'bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 hover:text-zinc-100 disabled:opacity-50'}`}
               >
-                {isPreviewMode ? 'Live Preview ON' : 'Preview OFF'}
+                {isComparing ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {isComparing ? 'Showing Original' : 'Show Original'}
               </button>
             </div>
 
